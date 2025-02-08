@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Convertidor a Markdown</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="theme-switch-wrapper">
+        <label class="theme-switch" for="checkbox">
+            <input type="checkbox" id="checkbox" />
+            <div class="slider round">
+                <span class="sun">☀️</span>
+                <span class="moon">🌙</span>
+            </div>
+        </label>
+    </div>
+
+    <div class="container">
+        <h1>Convertidor a Markdown</h1>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <div class="info-box">
+            <h3>Información importante</h3>
+            <p>Formatos permitidos: {{ ', '.join(allowed_extensions) }}</p>
+            <p>Tamaño máximo: {{ '%.1f'|format(max_size_mb) }}MB</p>
+        </div>
+
+        <form id="uploadForm" action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data" class="upload-form">
+            <div class="file-input-container">
+                <input type="file" 
+                       name="file" 
+                       id="file" 
+                       required 
+                       accept=".pdf,.docx,.pptx,.xlsx,.txt,.html,.csv,.json,.xml"
+                       data-max-size="{{ '%.1f'|format(max_size_mb) }}">
+                <p id="selectedFileName" class="file-name"></p>
+            </div>
+            <button type="submit" class="submit-btn">Convertir a Markdown</button>
+        </form>
+
+        <div id="loadingIndicator" class="loading-indicator" style="display: none;">
+            <div class="spinner"></div>
+            <p>Convirtiendo archivo...</p>
+            <div class="progress-container">
+                <div id="progressBar" class="progress-bar"></div>
+            </div>
+            <button id="cancelButton" class="cancel-btn">Cancelar</button>
+        </div>
+    </div>
+
+    <script>
+        const toggleSwitch = document.querySelector('.theme-switch input[type="checkbox"]');
+        const currentTheme = localStorage.getItem('theme');
+
+        if (currentTheme) {
+            document.documentElement.setAttribute('data-theme', currentTheme);
+            if (currentTheme === 'dark') {
+                toggleSwitch.checked = true;
+            }
+        }
+
+        function switchTheme(e) {
+            if (e.target.checked) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                document.documentElement.setAttribute('data-theme', 'light');
+                localStorage.setItem('theme', 'light');
+            }    
+        }
+
+        toggleSwitch.addEventListener('change', switchTheme, false);
+
+        const form = document.getElementById('uploadForm');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const submitButton = document.querySelector('button[type="submit"]');
+        const cancelButton = document.getElementById('cancelButton');
+        let xhr;
+
+        document.getElementById('file').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const maxSizeMB = parseFloat(this.getAttribute('data-max-size'));
+            const maxSizeBytes = maxSizeMB * 1024 * 1024;
+
+            if (file && file.size > maxSizeBytes) {
+                alert(`El archivo excede el tamaño máximo permitido de ${maxSizeMB}MB.`);
+                this.value = '';
+                document.getElementById('selectedFileName').textContent = '';
+            } else {
+                const fileName = file?.name || 'Ningún archivo seleccionado';
+                document.getElementById('selectedFileName').textContent = `Archivo seleccionado: ${fileName}`;
+            }
+        });
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            loadingIndicator.style.display = 'block';
+            submitButton.disabled = true;
+            document.getElementById('progressBar').style.width = '0%';
+
+            const formData = new FormData(form);
+            xhr = new XMLHttpRequest();
+            
+            xhr.open('POST', form.action);
+            xhr.responseType = 'blob';
+
+            xhr.upload.addEventListener('progress', function(e) {
+                if (e.lengthComputable) {
+                    const percent = (e.loaded / e.total) * 100;
+                    document.getElementById('progressBar').style.width = percent + '%';
+                }
+            });
+
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    const blob = xhr.response;
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = form.querySelector('input[type="file"]').files[0].name.replace(/\.[^/.]+$/, "") + '.md';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    
+                    setTimeout(() => {
+                        form.reset();
+                        loadingIndicator.style.display = 'none';
+                        submitButton.disabled = false;
+                        document.getElementById('selectedFileName').textContent = '';
+                    }, 1000);
+                } else {
+                    loadingIndicator.style.display = 'none';
+                    submitButton.disabled = false;
+                    alert('Error en la conversión. Inténtalo de nuevo.');
+                }
+            };
+
+            xhr.onerror = function() {
+                loadingIndicator.style.display = 'none';
+                submitButton.disabled = false;
+                alert('Error en la conexión. Inténtalo de nuevo.');
+            };
+
+            xhr.send(formData);
+        });
+
+        cancelButton.addEventListener('click', function() {
+            if (xhr) {
+                xhr.abort();
+            }
+            loadingIndicator.style.display = 'none';
+            submitButton.disabled = false;
+            document.getElementById('progressBar').style.width = '0%';
+            alert('Subida cancelada.');
+        });
+    </script>
+</body>
+</html>
